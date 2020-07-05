@@ -22,12 +22,17 @@ import java.util.TreeMap;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.VerticalAlignment;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.poi.ss.usermodel.CellStyle;
+import org.apache.poi.ss.usermodel.FillPatternType;
+import org.apache.poi.ss.usermodel.Font;
+import org.apache.poi.ss.usermodel.HorizontalAlignment;
+import org.apache.poi.hssf.util.HSSFColor;
 import org.apache.poi.ss.usermodel.BorderStyle;
 import org.apache.poi.ss.usermodel.IndexedColors;
 
@@ -37,7 +42,7 @@ import com.bpoconnect.automation.excelcreator.utils.GetPropertyValues;
 import com.bpoconnect.automation.excelcreator.xlsx.StreamingReader;
 
 public class MainApplication {
-	
+
 	private static final Logger log = LoggerFactory.getLogger(MainApplication.class);
 	public static final String PATTERN1 = "#,##0.00;(#,##0.00)";
 
@@ -46,16 +51,14 @@ public class MainApplication {
 
 		GetPropertyValues properties = new GetPropertyValues();
 		Properties config = properties.getPropValues();
-
+		log.info("Automation Started...");
 		try (InputStream is = new FileInputStream(new File(config.getProperty("sourcefilepath")));
 
 				Workbook workbook = StreamingReader.builder().rowCacheSize(100).bufferSize(4096).open(is)) {
 
 			Sheet sheet = workbook.getSheet(config.getProperty("sheetname"));
-			
-			log.info("Read excel finished... Sheet name is "+sheet);
-			
-			//Read excel and create maps with data
+
+			// Read excel and create maps with data
 			HashMap<String, ArrayList> userMap = new HashMap<String, ArrayList>();
 
 			for (Row r : sheet) {
@@ -113,7 +116,8 @@ public class MainApplication {
 
 					}
 
-					//check whether key is available, if available get the list and put new value, else add new entry
+					// check whether key is available, if available get the list and put new value,
+					// else add new entry
 					if (transaction.getAccount() != null) {
 						if (userMap.containsKey(transaction.getAccount())) {
 							ArrayList<Transaction> list = userMap.get(transaction.getAccount());
@@ -130,7 +134,7 @@ public class MainApplication {
 
 			}
 			log.info("Data map created...");
-			//Create summary map using userMap
+			// Create summary map using userMap
 			HashMap<String, Summary> summaryMap = new HashMap<>();
 
 			for (String key : userMap.keySet()) {
@@ -150,20 +154,19 @@ public class MainApplication {
 			}
 
 			log.info("Summary map created...");
-			
+
 			// Write Excel
 			DecimalFormat df = (DecimalFormat) DecimalFormat.getInstance();
 			df.applyPattern(PATTERN1);
 
 			// Blank workbook
 			XSSFWorkbook workbook2 = new XSSFWorkbook();
-			CellStyle style = workbook2.createCellStyle();
 
 			// Create a blank sheet
 			XSSFSheet sheet2 = workbook2.createSheet("Summary");
 
 			// This data needs to be written (Object[])
-			//Create Summary Sheet
+			// Create Summary Sheet
 			Map<Integer, Object[]> data = new TreeMap<Integer, Object[]>();
 			data.put(1, new Object[] { "Comapany", "Account", "Document currency", "Amount in doc. curr.",
 					"Local Currency", "Amount in local currency" });
@@ -172,13 +175,19 @@ public class MainApplication {
 				Summary summaryItem = summaryMap.get(summaryKey);
 				data.put(idx,
 						new Object[] { summaryItem.getCompany(), summaryItem.getAccount(),
-								summaryItem.getDocumentCurrency(), df.format(summaryItem.getAmountDoc()),
-								summaryItem.getLocalCurrency(), df.format(summaryItem.getAmountLocal()) });
+								summaryItem.getDocumentCurrency(), summaryItem.getAmountDoc(),
+								summaryItem.getLocalCurrency(), summaryItem.getAmountLocal() });
 				idx++;
 			}
 
 			Row rowheading = sheet2.createRow(1);
 			Cell cellHeading = rowheading.createCell(1);
+			CellStyle styleHeading = workbook2.createCellStyle();
+			Font fontHeading = workbook2.createFont();
+			fontHeading.setBold(true);
+			fontHeading.setFontHeightInPoints((short) 14);
+			styleHeading.setFont(fontHeading);
+			cellHeading.setCellStyle(styleHeading);
 			Date date = new Date();
 			SimpleDateFormat formatter = new SimpleDateFormat("dd.MM.yyyy");
 			String strDate = formatter.format(date);
@@ -193,10 +202,19 @@ public class MainApplication {
 				Object[] objArr = data.get(key);
 				int cellnum = 1;
 				for (Object obj : objArr) {
+					CellStyle style = workbook2.createCellStyle();
 					Cell cell = row.createCell(cellnum++);
+
 					if (key == 1) {
-						style.setFillBackgroundColor(IndexedColors.LIGHT_BLUE.getIndex());
+						style.setFillForegroundColor(IndexedColors.LIGHT_BLUE.getIndex());
+						style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+						style.setAlignment(HorizontalAlignment.CENTER);
+						style.setVerticalAlignment(VerticalAlignment.CENTER);
+						Font font = workbook2.createFont();
+						font.setBold(true);
+						style.setFont(font);
 					}
+
 					style.setBorderBottom(BorderStyle.THIN);
 					style.setBottomBorderColor(IndexedColors.BLACK.getIndex());
 					style.setBorderRight(BorderStyle.THIN);
@@ -205,20 +223,24 @@ public class MainApplication {
 					style.setTopBorderColor(IndexedColors.BLACK.getIndex());
 					style.setBorderLeft(BorderStyle.THIN);
 					style.setLeftBorderColor(IndexedColors.BLACK.getIndex());
-					cell.setCellStyle(style);
+
 					if (obj instanceof String) {
 						cell.setCellValue((String) obj);
 					} else if (obj instanceof Integer) {
-						cell.setCellValue((Integer) obj);
+						cell.setCellValue(((Integer) obj).intValue());
 					} else if (obj instanceof Double) {
-						cell.setCellValue((Double) obj);
+						short formatId = workbook2.createDataFormat()
+								.getFormat("_(* #,##0.00_);_(* (#,##0.00);_(* \"-\"??_);_(@_)");
+						style.setDataFormat(formatId);
+						cell.setCellValue(((Double) obj).doubleValue());
 					}
+					cell.setCellStyle(style);
+					sheet2.autoSizeColumn(cellnum);
 				}
 			}
 			log.info("Summary sheet created...");
 
-			
-			//Create Other sheets
+			// Create Other sheets
 			for (String currentSheet : userMap.keySet()) {
 				ArrayList currentSheetData = userMap.get(currentSheet);
 
@@ -238,18 +260,15 @@ public class MainApplication {
 					tempData.put(i + 2,
 							new Object[] { tempSheetData.getCompany(), tempSheetData.getAccount(),
 									tempSheetData.getDocumentDate(), tempSheetData.getDocumentType(),
-									tempSheetData.getDocumentCurrency(), df.format(tempSheetData.getAmmountDoc()),
-									tempSheetData.getLocalCurrency(), df.format(tempSheetData.getAmountLocal()),
+									tempSheetData.getDocumentCurrency(), tempSheetData.getAmmountDoc(),
+									tempSheetData.getLocalCurrency(), tempSheetData.getAmountLocal(),
 									tempSheetData.getText(), "TODAY()- C" + (i + 2) });
 					counter = i + 2;
 				}
 
-				tempData.put(counter + 1, new Object[] { "", "", "", "", "",
-						df.format(((Summary) summaryMap.get(((Transaction) currentSheetData.get(0)).getAccount()))
-								.getAmountDoc()),
-						"", df.format(((Summary) summaryMap.get(((Transaction) currentSheetData.get(0)).getAccount()))
-								.getAmountLocal()),
-						"", "" });
+				tempData.put(counter + 1,
+						new Object[] { "", "", "", "", "", "SUM(F2:F" + (currentSheetData.size() + 1) + ")", "",
+								"SUM(H2:H" + (currentSheetData.size() + 1) + ")", "", "" });
 
 				// Iterate over data and write to sheet
 				Set<Integer> keysetsheet = tempData.keySet();
@@ -259,18 +278,41 @@ public class MainApplication {
 					Object[] objArr = tempData.get(key);
 					int cellnum = 0;
 					for (Object obj : objArr) {
+						CellStyle style = workbook2.createCellStyle();
 						Cell cell = row.createCell(cellnum++);
-						style.setBorderBottom(BorderStyle.THIN);
-						style.setBottomBorderColor(IndexedColors.BLACK.getIndex());
-						style.setBorderRight(BorderStyle.THIN);
-						style.setRightBorderColor(IndexedColors.BLACK.getIndex());
-						style.setBorderTop(BorderStyle.THIN);
-						style.setTopBorderColor(IndexedColors.BLACK.getIndex());
-						style.setBorderLeft(BorderStyle.THIN);
-						style.setLeftBorderColor(IndexedColors.BLACK.getIndex());
-						cell.setCellStyle(style);
+						if (key == 1) {
+							style.setFillForegroundColor(IndexedColors.LIGHT_BLUE.getIndex());
+							style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+							style.setWrapText(true);
+							style.setAlignment(HorizontalAlignment.CENTER);
+							style.setVerticalAlignment(VerticalAlignment.CENTER);
+							Font font = workbook2.createFont();
+							font.setColor(HSSFColor.HSSFColorPredefined.WHITE.getIndex());
+							font.setBold(true);
+							style.setFont(font);
+						}
+
+						if (key != keysetsheet.size()) {
+							style.setBorderBottom(BorderStyle.THIN);
+							style.setBottomBorderColor(IndexedColors.BLACK.getIndex());
+							style.setBorderRight(BorderStyle.THIN);
+							style.setRightBorderColor(IndexedColors.BLACK.getIndex());
+							style.setBorderTop(BorderStyle.THIN);
+							style.setTopBorderColor(IndexedColors.BLACK.getIndex());
+							style.setBorderLeft(BorderStyle.THIN);
+							style.setLeftBorderColor(IndexedColors.BLACK.getIndex());
+
+						}
+
 						if (obj instanceof String) {
 							if (((String) obj).toString().contains("TODAY()")) {
+								cell.setCellFormula((String) obj);
+							} else if (((String) obj).toString().contains("SUM(")) {
+								short formatId = workbook2.createDataFormat()
+										.getFormat("_(* #,##0.00_);_(* (#,##0.00);_(* \"-\"??_);_(@_)");
+								style.setDataFormat(formatId);
+								style.setBorderBottom(BorderStyle.DOUBLE);
+								style.setBottomBorderColor(IndexedColors.BLACK.getIndex());
 								cell.setCellFormula((String) obj);
 							} else {
 								cell.setCellValue((String) obj);
@@ -278,11 +320,16 @@ public class MainApplication {
 						} else if (obj instanceof Integer) {
 							cell.setCellValue((Integer) obj);
 						} else if (obj instanceof Double) {
-							cell.setCellValue((Double) obj);
+							short formatId = workbook2.createDataFormat()
+									.getFormat("_(* #,##0.00_);_(* (#,##0.00);_(* \"-\"??_);_(@_)");
+							style.setDataFormat(formatId);
+							cell.setCellValue(((Double) obj).doubleValue());
 						}
+						cell.setCellStyle(style);
+						tempSheet.autoSizeColumn(cellnum);
 					}
 				}
-				log.info("Sheet "+currentSheet+" created...");
+				log.info("Sheet " + currentSheet + " created...");
 			}
 
 			try {
@@ -290,16 +337,16 @@ public class MainApplication {
 				FileOutputStream out = new FileOutputStream(new File(config.getProperty("outputfilepath")));
 				workbook2.write(out);
 				out.close();
-				
-				log.info("Final report created...");
-				
+				workbook2.close();
+
+				log.info("Automation Finished...");
 
 			} catch (Exception e) {
-				e.printStackTrace();
+				log.error(e.getMessage());
 			}
 
 		} catch (IOException e) {
-			e.printStackTrace();
+			log.error(e.getMessage());
 		}
 
 	}
